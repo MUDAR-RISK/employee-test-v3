@@ -1,25 +1,39 @@
-<script>
-(async () => {
-  const status = document.getElementById('status');
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>اختبار قدرات الموظفين</title>
+  <style>
+    body{font-family:system-ui,Arial,sans-serif;background:#f7f7f7;margin:24px}
+    .card{background:#fff;border-radius:12px;padding:16px;box-shadow:0 2px 10px rgba(0,0,0,.06);max-width:880px}
+    .ok{color:#0a7f2e}.err{color:#b00020} code{background:#0001;padding:2px 6px;border-radius:6px}
+  </style>
+</head>
+<body>
+  <h1>اختبار قدرات الموظفين</h1>
+  <div class="card" id="status">جارِ التحميل…</div>
 
-  try {
-    // جرّب تحميل الملف من نفس مجلد docs
-    const res = await fetch('question_bank_v3.json', { cache: 'no-store' });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-
-    const bank = await res.json();
-
-    status.innerHTML = `
-      <div class="ok">تم التحميل ✅</div>
-      <div>الإصدار: <b>${bank.bank_version ?? 'غير محدد'}</b></div>
-      <div>عدد الأسئلة: <b>${Array.isArray(bank.questions) ? bank.questions.length : 0}</b></div>
-    `;
-  } catch (e) {
-    status.innerHTML = `
-      <div class="err">فشل تحميل بنك الأسئلة ❌</div>
-      <div><code>${e.message}</code></div>
-    `;
-    console.error(e);
-  }
-})();
-</script>
+  <script>
+  (async () => {
+    const status = document.getElementById('status');
+    try {
+      const res = await fetch('question_bank_v3.json', { cache: 'no-store' });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const bank = await res.json();
+      status.innerHTML = `
+        <div class="ok">تم التحميل ✅</div>
+        <div>الإصدار: <b>${bank.bank_version ?? '—'}</b></div>
+        <div>عدد الأسئلة: <b>${Array.isArray(bank.questions) ? bank.questions.length : 0}</b></div>
+      `;
+    } catch (e) {
+      status.innerHTML = `
+        <div class="err">فشل تحميل بنك الأسئلة ❌</div>
+        <div><code>${(e && e.message) ? e.message : String(e)}</code></div>
+      `;
+      console.error(e);
+    }
+  })();
+  </script>
+</body>
+</html>
