@@ -5,35 +5,214 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>اختبار قدرات الموظفين</title>
   <style>
-    body{font-family:system-ui,Arial,sans-serif;background:#f7f7f7;margin:24px}
-    .card{background:#fff;border-radius:12px;padding:16px;box-shadow:0 2px 10px rgba(0,0,0,.06);max-width:880px}
-    .ok{color:#0a7f2e}.err{color:#b00020} code{background:#0001;padding:2px 6px;border-radius:6px}
+    :root { --bg:#f6f7f9; --card:#fff; --accent:#0a7f2e; --muted:#6b7280; --danger:#b00020; }
+    body{font-family:system-ui,Segoe UI,Arial,sans-serif;background:var(--bg);margin:0;padding:24px}
+    .wrap{max-width:900px;margin:0 auto}
+    h1{margin:0 0 16px}
+    .card{background:var(--card);border-radius:14px;box-shadow:0 6px 18px rgba(0,0,0,.06);padding:18px}
+    .row{display:flex;gap:12px;align-items:center}
+    .space{height:12px}
+    .muted{color:var(--muted)}
+    .ok{color:var(--accent)} .err{color:var(--danger)}
+    .progress{height:8px;background:#e5e7eb;border-radius:999px;overflow:hidden}
+    .progress > div{height:100%;background:#2563eb;width:0%}
+    .q-title{font-size:18px;line-height:1.7;margin:0}
+    .choices{display:grid;gap:10px;margin-top:12px}
+    .choice{display:flex;gap:10px;align-items:center;border:1px solid #e5e7eb;border-radius:10px;padding:10px}
+    .choice input{accent-color:#2563eb}
+    .bar{display:flex;justify-content:space-between;align-items:center;gap:12px}
+    .btn{background:#111827;color:#fff;border:none;border-radius:10px;padding:10px 16px;cursor:pointer}
+    .btn[disabled]{opacity:.4;cursor:not-allowed}
+    .btn-outline{background:#fff;color:#111827;border:1px solid #e5e7eb}
+    .right{margin-inline-start:auto}
+    .chip{background:#eef2ff;color:#4338ca;border-radius:999px;padding:2px 10px;font-size:12px}
+    code{background:#0001;padding:2px 6px;border-radius:6px}
+    .center{display:flex;align-items:center;justify-content:center}
+    .hidden{display:none}
   </style>
 </head>
 <body>
+<div class="wrap">
   <h1>اختبار قدرات الموظفين</h1>
-  <div class="card" id="status">جارِ التحميل…</div>
 
-  <script>
-  (async () => {
-    const status = document.getElementById('status');
-    try {
-      const res = await fetch('question_bank_v3.json', { cache: 'no-store' });
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      const bank = await res.json();
-      status.innerHTML = `
-        <div class="ok">تم التحميل ✅</div>
-        <div>الإصدار: <b>${bank.bank_version ?? '—'}</b></div>
-        <div>عدد الأسئلة: <b>${Array.isArray(bank.questions) ? bank.questions.length : 0}</b></div>
-      `;
-    } catch (e) {
-      status.innerHTML = `
-        <div class="err">فشل تحميل بنك الأسئلة ❌</div>
-        <div><code>${(e && e.message) ? e.message : String(e)}</code></div>
-      `;
-      console.error(e);
-    }
-  })();
-  </script>
+  <!-- شاشة حالة التحميل -->
+  <div id="loader" class="card">جارِ التحميل…</div>
+
+  <!-- شاشة الامتحان -->
+  <div id="exam" class="card hidden">
+    <div class="bar">
+      <div class="chip" id="bankMeta"></div>
+      <div class="muted">السؤال <span id="idx">1</span> / <span id="total">—</span></div>
+    </div>
+    <div class="space"></div>
+    <div class="progress"><div id="prog"></div></div>
+    <div class="space"></div>
+
+    <p id="qText" class="q-title"></p>
+    <div id="choices" class="choices"></div>
+
+    <div class="space"></div>
+    <div class="row">
+      <button class="btn btn-outline" id="prevBtn">السابق</button>
+      <button class="btn right" id="nextBtn">التالي</button>
+      <button class="btn" id="finishBtn">إنهاء</button>
+    </div>
+  </div>
+
+  <!-- شاشة النتيجة -->
+  <div id="result" class="card hidden"></div>
+</div>
+
+<script>
+/* ======= مساعدات عامة ======= */
+const $ = (sel) => document.querySelector(sel);
+const saveLS = (k,v) => localStorage.setItem(k, JSON.stringify(v));
+const getLS = (k,d=null) => { try {const v = localStorage.getItem(k); return v?JSON.parse(v):d;} catch {return d;} };
+
+function safeText(q){
+  return q?.text ?? q?.prompt ?? q?.label ?? q?.question ?? '—';
+}
+function extractOptions(q){
+  // إن وجد options في JSON نستخدمها
+  if (Array.isArray(q?.options) && q.options.length) return q.options.map(String);
+  // افتراضي: مقياس 1–5
+  return ['أبداً','نادرًا','أحيانًا','غالبًا','دائمًا'];
+}
+
+/* ======= الحالة العامة ======= */
+const STATE_KEY = 'emp_test_v3_state';
+let BANK = null;
+let QUESTIONS = [];
+let state = getLS(STATE_KEY, { i:0, answers:{} });
+
+/* ======= تحميل البنك ======= */
+(async () => {
+  const loader = $('#loader');
+
+  try {
+    const res = await fetch('question_bank_v3.json', { cache:'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    BANK = await res.json();
+
+    // توقع وجود مصفوفة أسئلة داخل bank.questions
+    QUESTIONS = Array.isArray(BANK?.questions) ? BANK.questions : [];
+    if (!QUESTIONS.length) throw new Error('لم يتم العثور على أسئلة داخل questions[]');
+
+    // تحديث واجهة الامتحان
+    $('#bankMeta').textContent = `الإصدار: ${BANK.bank_version ?? '—'} • الأسئلة: ${QUESTIONS.length}`;
+    $('#total').textContent = QUESTIONS.length;
+
+    loader.classList.add('hidden');
+    $('#exam').classList.remove('hidden');
+
+    renderQuestion();
+  } catch (e) {
+    loader.innerHTML = `
+      <div class="err">فشل تحميل بنك الأسئلة ❌</div>
+      <div class="muted">الخطأ: <code>${(e && e.message) ? e.message : String(e)}</code></div>
+      <div class="muted">تأكد من وجود الملف <code>docs/question_bank_v3.json</code></div>
+    `;
+    console.error(e);
+  }
+})();
+
+/* ======= رسم سؤال واحد ======= */
+function renderQuestion(){
+  const i = Math.max(0, Math.min(state.i, QUESTIONS.length-1));
+  state.i = i;
+  saveLS(STATE_KEY, state);
+
+  const q = QUESTIONS[i];
+  const text = safeText(q);
+  const opts = extractOptions(q);
+
+  $('#qText').textContent = text;
+
+  const ch = $('#choices');
+  ch.innerHTML = '';
+  opts.forEach((label, idx) => {
+    const id = `opt_${i}_${idx}`;
+    const val = (q?.options && q.options[idx] !== undefined) ? q.options[idx] : (idx+1); // القيمة 1..5 إن لم توجد
+    const isChecked = state.answers[q?.id ?? i] == val;
+
+    const div = document.createElement('label');
+    div.className = 'choice';
+    div.innerHTML = `
+      <input type="radio" name="q${i}" id="${id}" value="${val}" ${isChecked?'checked':''}>
+      <span>${label}</span>
+    `;
+    ch.appendChild(div);
+  });
+
+  // أزرار
+  $('#idx').textContent = i+1;
+  const pct = ((i) / (QUESTIONS.length-1)) * 100;
+  $('#prog').style.width = (isFinite(pct) ? pct : 0) + '%';
+
+  $('#prevBtn').disabled = (i === 0);
+  $('#nextBtn').disabled = (i === QUESTIONS.length-1);
+  $('#finishBtn').disabled = (state.answers[q?.id ?? i] == null);
+
+  // تفعيل التغيير
+  ch.querySelectorAll('input[type=radio]').forEach(input=>{
+    input.addEventListener('change', ()=>{
+      state.answers[q?.id ?? i] = input.value;
+      saveLS(STATE_KEY, state);
+      $('#finishBtn').disabled = false;
+    });
+  });
+}
+
+/* ======= تنقل ======= */
+$('#prevBtn').addEventListener('click', ()=>{
+  if (state.i > 0){ state.i--; renderQuestion(); }
+});
+$('#nextBtn').addEventListener('click', ()=>{
+  if (state.i < QUESTIONS.length-1){ state.i++; renderQuestion(); }
+});
+$('#finishBtn').addEventListener('click', finishExam);
+
+/* ======= إنهاء + نتيجة أولية ======= */
+function finishExam(){
+  // نتيجة أولية: عدد الأسئلة المجابة + تفريغ/تنزيل الإجابات
+  const answersCount = Object.keys(state.answers).length;
+  const res = $('#result');
+  res.innerHTML = `
+    <div class="ok">تم إنهاء الاختبار 🎉</div>
+    <div class="space"></div>
+    <div>عدد الإجابات: <b>${answersCount}</b> من <b>${QUESTIONS.length}</b></div>
+    <div class="space"></div>
+    <div class="row">
+      <button class="btn btn-outline" id="restartBtn">إعادة البدء</button>
+      <button class="btn right" id="downloadBtn">تنزيل الإجابات JSON</button>
+    </div>
+  `;
+  $('#exam').classList.add('hidden');
+  res.classList.remove('hidden');
+
+  $('#restartBtn').onclick = ()=>{
+    state = { i:0, answers:{} };
+    saveLS(STATE_KEY, state);
+    res.classList.add('hidden');
+    $('#exam').classList.remove('hidden');
+    renderQuestion();
+  };
+
+  $('#downloadBtn').onclick = ()=>{
+    const payload = {
+      bank_version: BANK?.bank_version ?? null,
+      answered: state.answers,
+      total_questions: QUESTIONS.length,
+      timestamp: new Date().toISOString()
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'employee_test_answers.json';
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  };
+}
+</script>
 </body>
 </html>
