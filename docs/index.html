@@ -2,21 +2,21 @@
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>اختبار قدرات الموظفين</title>
   <style>
-    :root { --bg:#f6f7f9; --card:#fff; --accent:#0a7f2e; --muted:#6b7280; --danger:#b00020; }
+    :root{--bg:#f6f7f9;--card:#fff;--accent:#0a7f2e;--muted:#6b7280;--danger:#b00020}
     body{font-family:system-ui,Segoe UI,Arial,sans-serif;background:var(--bg);margin:0;padding:24px}
-    .wrap{max-width:900px;margin:0 auto}
+    .wrap{max-width:980px;margin:0 auto}
     h1{margin:0 0 16px}
-    .card{background:var(--card);border-radius:14px;box-shadow:0 6px 18px rgba(0,0,0,.06);padding:18px}
-    .row{display:flex;gap:12px;align-items:center}
-    .space{height:12px}
+    .chip{background:#eef2ff;color:#4338ca;border-radius:999px;padding:2px 10px;font-size:12px}
     .muted{color:var(--muted)}
     .ok{color:var(--accent)} .err{color:var(--danger)}
+    .card{background:var(--card);border-radius:14px;box-shadow:0 6px 18px rgba(0,0,0,.06);padding:18px}
+    .space{height:12px}
     .progress{height:8px;background:#e5e7eb;border-radius:999px;overflow:hidden}
-    .progress > div{height:100%;background:#2563eb;width:0%}
-    .q-title{font-size:18px;line-height:1.7;margin:0}
+    .progress>div{height:100%;background:#2563eb;width:0%}
+    .q-title{font-size:18px;line-height:1.8;margin:0}
     .choices{display:grid;gap:10px;margin-top:12px}
     .choice{display:flex;gap:10px;align-items:center;border:1px solid #e5e7eb;border-radius:10px;padding:10px}
     .choice input{accent-color:#2563eb}
@@ -25,10 +25,12 @@
     .btn[disabled]{opacity:.4;cursor:not-allowed}
     .btn-outline{background:#fff;color:#111827;border:1px solid #e5e7eb}
     .right{margin-inline-start:auto}
-    .chip{background:#eef2ff;color:#4338ca;border-radius:999px;padding:2px 10px;font-size:12px}
     code{background:#0001;padding:2px 6px;border-radius:6px}
-    .center{display:flex;align-items:center;justify-content:center}
-    .hidden{display:none}
+    /* جدول التدقيق */
+    table{width:100%;border-collapse:collapse}
+    th,td{border:1px solid #e5e7eb;padding:8px;font-size:14px}
+    th{background:#fafafa}
+    .pill{display:inline-block;border-radius:999px;padding:2px 8px;font-size:12px;border:1px solid #e5e7eb}
   </style>
 </head>
 <body>
@@ -37,6 +39,9 @@
 
   <!-- شاشة حالة التحميل -->
   <div id="loader" class="card">جارِ التحميل…</div>
+
+  <!-- شاشة التدقيق/التقارير الإدارية -->
+  <div id="debugPanel" class="card hidden"></div>
 
   <!-- شاشة الامتحان -->
   <div id="exam" class="card hidden">
@@ -52,8 +57,9 @@
     <div id="choices" class="choices"></div>
 
     <div class="space"></div>
-    <div class="row">
+    <div class="bar">
       <button class="btn btn-outline" id="prevBtn">السابق</button>
+      <div class="muted" id="sectionPill"></div>
       <button class="btn right" id="nextBtn">التالي</button>
       <button class="btn" id="finishBtn">إنهاء</button>
     </div>
@@ -64,117 +70,223 @@
 </div>
 
 <script>
-/* ======= مساعدات عامة ======= */
-const $ = (sel) => document.querySelector(sel);
-const saveLS = (k,v) => localStorage.setItem(k, JSON.stringify(v));
-const getLS = (k,d=null) => { try {const v = localStorage.getItem(k); return v?JSON.parse(v):d;} catch {return d;} };
+/* ======= Helpers ======= */
+const $ = s=>document.querySelector(s);
+const qs = s=>Array.from(document.querySelectorAll(s));
+const params = new URLSearchParams(location.search);
+const DEBUG = params.get('debug')==='1';
 
-function safeText(q){
-  return q?.text ?? q?.prompt ?? q?.label ?? q?.question ?? '—';
+const saveLS=(k,v)=>localStorage.setItem(k,JSON.stringify(v));
+const getLS=(k,d=null)=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch{return d}};
+
+const STATE_KEY='emp_test_v3_state';
+let BANK=null, QUESTIONS=[];
+let state=getLS(STATE_KEY,{i:0,answers:{}});
+
+function safeText(q){return q?.text ?? q?.prompt ?? q?.label ?? q?.question ?? '—'}
+function questionType(q){
+  if(q?.type==='mcq'||q?.type==='likert') return q.type;
+  // fallback: options => mcq, otherwise likert
+  return Array.isArray(q?.options) && q.options.length ? 'mcq' : 'likert';
 }
 function extractOptions(q){
-  // إن وجد options في JSON نستخدمها
-  if (Array.isArray(q?.options) && q.options.length) return q.options.map(String);
-  // افتراضي: مقياس 1–5
-  return ['أبداً','نادرًا','أحيانًا','غالبًا','دائمًا'];
+  if(questionType(q)==='mcq'){
+    return Array.isArray(q?.options) ? q.options.map(String) : [];
+  }
+  // Likert labels (overrideable)
+  if(Array.isArray(q?.scaleLabels) && q.scaleLabels.length) return q.scaleLabels.map(String);
+  return ['أبداً','نادراً','أحيانًا','غالبًا','دائمًا'];
 }
+function answerKey(q, idx){ return (q?.id ?? idx); }
 
-/* ======= الحالة العامة ======= */
-const STATE_KEY = 'emp_test_v3_state';
-let BANK = null;
-let QUESTIONS = [];
-let state = getLS(STATE_KEY, { i:0, answers:{} });
-
-/* ======= تحميل البنك ======= */
-(async () => {
+/* ======= Loader ======= */
+(async ()=>{
   const loader = $('#loader');
-
-  try {
-    const res = await fetch('question_bank_v3.json', { cache:'no-store' });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
+  try{
+    const res = await fetch('question_bank_v3.json',{cache:'no-store'});
+    if(!res.ok) throw new Error('HTTP '+res.status);
     BANK = await res.json();
+    QUESTIONS = Array.isArray(BANK?.questions)? BANK.questions : [];
+    if(!QUESTIONS.length) throw new Error('لم يتم العثور على مصفوفة questions[] داخل الملف');
 
-    // توقع وجود مصفوفة أسئلة داخل bank.questions
-    QUESTIONS = Array.isArray(BANK?.questions) ? BANK.questions : [];
-    if (!QUESTIONS.length) throw new Error('لم يتم العثور على أسئلة داخل questions[]');
+    if(DEBUG){
+      renderDebug();  // لوحة التدقيق
+      loader.classList.add('hidden');
+      $('#debugPanel').classList.remove('hidden');
+      return;
+    }
 
-    // تحديث واجهة الامتحان
     $('#bankMeta').textContent = `الإصدار: ${BANK.bank_version ?? '—'} • الأسئلة: ${QUESTIONS.length}`;
     $('#total').textContent = QUESTIONS.length;
-
     loader.classList.add('hidden');
     $('#exam').classList.remove('hidden');
-
     renderQuestion();
-  } catch (e) {
+
+  }catch(e){
     loader.innerHTML = `
       <div class="err">فشل تحميل بنك الأسئلة ❌</div>
-      <div class="muted">الخطأ: <code>${(e && e.message) ? e.message : String(e)}</code></div>
-      <div class="muted">تأكد من وجود الملف <code>docs/question_bank_v3.json</code></div>
+      <div class="muted">الخطأ: <code>${e?.message ?? String(e)}</code></div>
+      <div class="muted">تأكد من <code>docs/question_bank_v3.json</code></div>
     `;
     console.error(e);
   }
 })();
 
-/* ======= رسم سؤال واحد ======= */
+/* ======= Debug / Validator ======= */
+function renderDebug(){
+  const badType=[], mcqNoOptions=[], emptyText=[], dupIds=[];
+  const seen=new Set();
+  QUESTIONS.forEach((q,idx)=>{
+    const t = questionType(q);
+    if(!q?.type) badType.push(idx);
+    if(t==='mcq' && (!Array.isArray(q?.options) || q.options.length===0)) mcqNoOptions.push(idx);
+    if(!safeText(q) || safeText(q).trim()==='') emptyText.push(idx);
+    const id = q?.id ?? `idx_${idx}`;
+    if(seen.has(id)) dupIds.push({idx,id}); else seen.add(id);
+  });
+
+  const panel = $('#debugPanel');
+  panel.innerHTML = `
+    <div class="bar">
+      <div>
+        <div class="chip">وضع التدقيق / Debug</div>
+        <div class="muted">استخدم هذا التقرير لتصحيح بنك الأسئلة ثم أعد التحميل بدون ?debug=1</div>
+      </div>
+      <a class="btn btn-outline" href="${location.pathname}">خروج</a>
+    </div>
+    <div class="space"></div>
+    <div class="card" style="background:#fcfcff">
+      <b>ملخص:</b>
+      <ul>
+        <li>إجمالي الأسئلة: <b>${QUESTIONS.length}</b></li>
+        <li>أسئلة بدون <code>type</code>: <b>${badType.length}</b></li>
+        <li>MCQ بدون <code>options</code>: <b>${mcqNoOptions.length}</b></li>
+        <li>أسئلة بدون نص/فارغة: <b>${emptyText.length}</b></li>
+        <li>معرّفات متكررة: <b>${dupIds.length}</b></li>
+      </ul>
+    </div>
+
+    <div class="space"></div>
+    <h3>تفاصيل</h3>
+    ${tableSection('أسئلة بدون type', badType, (i)=>QUESTIONS[i])}
+    ${tableSection('MCQ بدون options', mcqNoOptions, (i)=>QUESTIONS[i])}
+    ${tableSection('أسئلة بدون نص', emptyText, (i)=>QUESTIONS[i])}
+    ${dupIds.length? tableDupIds(dupIds) : ''}
+
+    <div class="space"></div>
+    <div class="card">
+      <h3>قوالب جاهزة للتصحيح</h3>
+      <p class="muted">انسخ النموذج المناسب وعدّل القيم والصقها في <code>question_bank_v3.json</code> ثم Commit.</p>
+      <b>MCQ (اختيار من متعدد):</b>
+      <pre><code>{
+  "id": "logic_01",
+  "section": "المنطق",
+  "type": "mcq",
+  "text": "اكتب نص السؤال …",
+  "options": ["خيار 1","خيار 2","خيار 3","خيار 4","خيار 5"],
+  "correct": 2
+}</code></pre>
+      <b>Likert (مقياس 5 نقاط):</b>
+      <pre><code>{
+  "id": "org_01",
+  "section": "التنظيم",
+  "type": "likert",
+  "text": "اكتب العبارة …",
+  "scaleLabels": ["أبداً","نادراً","أحيانًا","غالبًا","دائمًا"]  // (اختياري)
+}</code></pre>
+    </div>
+  `;
+  function tableSection(title, arr, getter){
+    if(!arr.length) return '';
+    const rows = arr.map(idx=>{
+      const q = getter(idx)||{};
+      const id = q?.id ?? `idx_${idx}`;
+      const type = q?.type ?? '(غير محدد)';
+      const opts = Array.isArray(q?.options)? q.options.length : 0;
+      return `<tr>
+        <td>${idx}</td>
+        <td>${id}</td>
+        <td>${type}</td>
+        <td>${opts}</td>
+        <td>${escapeHtml(safeText(q)).slice(0,120)}${safeText(q)?.length>120?'…':''}</td>
+      </tr>`;
+    }).join('');
+    return `
+      <div class="space"></div>
+      <h4>${title}</h4>
+      <table>
+        <thead><tr><th>#</th><th>id</th><th>type</th><th>options</th><th>النص</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    `;
+  }
+  function tableDupIds(list){
+    const rows=list.map(o=>`<tr><td>${o.idx}</td><td>${o.id}</td></tr>`).join('');
+    return `
+      <div class="space"></div>
+      <h4>معرّفات متكررة</h4>
+      <table>
+        <thead><tr><th>#</th><th>id</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    `;
+  }
+}
+function escapeHtml(s){return (s??'').replace(/[&<>"]/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[m]))}
+
+/* ======= Exam UI ======= */
 function renderQuestion(){
   const i = Math.max(0, Math.min(state.i, QUESTIONS.length-1));
-  state.i = i;
-  saveLS(STATE_KEY, state);
+  state.i=i; saveLS(STATE_KEY,state);
 
-  const q = QUESTIONS[i];
-  const text = safeText(q);
-  const opts = extractOptions(q);
+  const q = QUESTIONS[i]; const t = questionType(q);
+  const text = safeText(q); const opts = extractOptions(q);
 
-  $('#qText').textContent = text;
-
-  const ch = $('#choices');
-  ch.innerHTML = '';
-  opts.forEach((label, idx) => {
-    const id = `opt_${i}_${idx}`;
-    const val = (q?.options && q.options[idx] !== undefined) ? q.options[idx] : (idx+1); // القيمة 1..5 إن لم توجد
-    const isChecked = state.answers[q?.id ?? i] == val;
-
-    const div = document.createElement('label');
-    div.className = 'choice';
-    div.innerHTML = `
-      <input type="radio" name="q${i}" id="${id}" value="${val}" ${isChecked?'checked':''}>
-      <span>${label}</span>
-    `;
-    ch.appendChild(div);
-  });
-
-  // أزرار
-  $('#idx').textContent = i+1;
-  const pct = ((i) / (QUESTIONS.length-1)) * 100;
-  $('#prog').style.width = (isFinite(pct) ? pct : 0) + '%';
-
-  $('#prevBtn').disabled = (i === 0);
-  $('#nextBtn').disabled = (i === QUESTIONS.length-1);
-  $('#finishBtn').disabled = (state.answers[q?.id ?? i] == null);
-
-  // تفعيل التغيير
-  ch.querySelectorAll('input[type=radio]').forEach(input=>{
-    input.addEventListener('change', ()=>{
-      state.answers[q?.id ?? i] = input.value;
-      saveLS(STATE_KEY, state);
-      $('#finishBtn').disabled = false;
+  // Validation صارم: سؤال mcq بدون options => خطأ واضح
+  if(t==='mcq' && (!opts || opts.length===0)){
+    $('#qText').innerHTML = `<span class="err">خطأ في السؤال #${i} (type=mcq بدون options)</span>`;
+    $('#choices').innerHTML = `<div class="muted">صحح هذا السؤال في <code>question_bank_v3.json</code> ثم حدّث الصفحة.</div>`;
+    $('#nextBtn').disabled=true; $('#finishBtn').disabled=true;
+  }else{
+    $('#qText').textContent = text;
+    const ch = $('#choices'); ch.innerHTML='';
+    opts.forEach((label, idx)=>{
+      const id = `opt_${i}_${idx}`;
+      const val = (t==='mcq') ? (q?.options?.[idx] ?? (idx+1)) : (idx+1);
+      const ak = answerKey(q,i);
+      const checked = state.answers[ak]==val;
+      const div = document.createElement('label');
+      div.className='choice';
+      div.innerHTML = `
+        <input type="radio" name="q${i}" id="${id}" value="${val}" ${checked?'checked':''}>
+        <span>${escapeHtml(String(label))}</span>
+      `;
+      ch.appendChild(div);
     });
-  });
-}
+    // handlers
+    ch.querySelectorAll('input[type=radio]').forEach(inp=>{
+      inp.addEventListener('change', ()=>{
+        const ak = answerKey(q,i);
+        state.answers[ak]=inp.value; saveLS(STATE_KEY,state);
+        $('#finishBtn').disabled=false;
+      });
+    });
+    $('#nextBtn').disabled = (i===QUESTIONS.length-1);
+    $('#finishBtn').disabled = (state.answers[answerKey(q,i)]==null);
+  }
 
-/* ======= تنقل ======= */
-$('#prevBtn').addEventListener('click', ()=>{
-  if (state.i > 0){ state.i--; renderQuestion(); }
-});
-$('#nextBtn').addEventListener('click', ()=>{
-  if (state.i < QUESTIONS.length-1){ state.i++; renderQuestion(); }
-});
+  $('#idx').textContent=i+1;
+  $('#total').textContent=QUESTIONS.length;
+  $('#sectionPill').innerHTML = q?.section? `<span class="pill">${escapeHtml(q.section)}</span>` : '';
+  const pct = ((i)/(QUESTIONS.length-1))*100; $('#prog').style.width = (isFinite(pct)?pct:0)+'%';
+  $('#prevBtn').disabled=(i===0);
+}
+$('#prevBtn').addEventListener('click', ()=>{ if(state.i>0){state.i--; renderQuestion();} });
+$('#nextBtn').addEventListener('click', ()=>{ if(state.i<QUESTIONS.length-1){state.i++; renderQuestion();} });
 $('#finishBtn').addEventListener('click', finishExam);
 
-/* ======= إنهاء + نتيجة أولية ======= */
+/* ======= Result ======= */
 function finishExam(){
-  // نتيجة أولية: عدد الأسئلة المجابة + تفريغ/تنزيل الإجابات
   const answersCount = Object.keys(state.answers).length;
   const res = $('#result');
   res.innerHTML = `
@@ -182,7 +294,7 @@ function finishExam(){
     <div class="space"></div>
     <div>عدد الإجابات: <b>${answersCount}</b> من <b>${QUESTIONS.length}</b></div>
     <div class="space"></div>
-    <div class="row">
+    <div class="bar">
       <button class="btn btn-outline" id="restartBtn">إعادة البدء</button>
       <button class="btn right" id="downloadBtn">تنزيل الإجابات JSON</button>
     </div>
@@ -190,27 +302,15 @@ function finishExam(){
   $('#exam').classList.add('hidden');
   res.classList.remove('hidden');
 
-  $('#restartBtn').onclick = ()=>{
-    state = { i:0, answers:{} };
-    saveLS(STATE_KEY, state);
-    res.classList.add('hidden');
-    $('#exam').classList.remove('hidden');
-    renderQuestion();
+  $('#restartBtn').onclick=()=>{
+    state={i:0,answers:{}}; saveLS(STATE_KEY,state);
+    res.classList.add('hidden'); $('#exam').classList.remove('hidden'); renderQuestion();
   };
-
-  $('#downloadBtn').onclick = ()=>{
-    const payload = {
-      bank_version: BANK?.bank_version ?? null,
-      answered: state.answers,
-      total_questions: QUESTIONS.length,
-      timestamp: new Date().toISOString()
-    };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = 'employee_test_answers.json';
-    document.body.appendChild(a); a.click(); a.remove();
-    URL.revokeObjectURL(url);
+  $('#downloadBtn').onclick=()=>{
+    const payload={ bank_version: BANK?.bank_version ?? null, answered: state.answers, total_questions: QUESTIONS.length, timestamp: new Date().toISOString() };
+    const blob = new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});
+    const url=URL.createObjectURL(blob); const a=document.createElement('a');
+    a.href=url; a.download='employee_test_answers.json'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
   };
 }
 </script>
