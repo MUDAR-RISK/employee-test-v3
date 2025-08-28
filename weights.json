@@ -1,0 +1,55 @@
+{
+  "customer_support": {
+    "weights": {
+      "communication": 0.25,
+      "patience": 0.2,
+      "speed": 0.2,
+      "problem_solving": 0.2,
+      "discipline": 0.15
+    }
+  },
+  "finance": {
+    "weights": {
+      "accuracy": 0.3,
+      "speed": 0.2,
+      "discipline": 0.2,
+      "stability": 0.15,
+      "decision": 0.15
+    }
+  },
+  "p2p": {
+    "weights": {
+      "accuracy": 0.25,
+      "attention": 0.2,
+      "time_management": 0.2,
+      "communication": 0.15,
+      "discipline": 0.2
+    }
+  },
+  "risk_management": {
+    "weights": {
+      "decision": 0.3,
+      "stability": 0.25,
+      "accuracy": 0.2,
+      "openness": 0.15,
+      "discipline": 0.1
+    }
+  },
+  "documentation": {
+    "weights": {
+      "accuracy": 0.4,
+      "discipline": 0.2,
+      "attention": 0.2,
+      "patience": 0.2
+    }
+  },
+  "hr": {
+    "weights": {
+      "communication": 0.25,
+      "emotional_intelligence": 0.2,
+      "neutrality": 0.2,
+      "stability": 0.15,
+      "decision": 0.2
+    }
+  }
+}
