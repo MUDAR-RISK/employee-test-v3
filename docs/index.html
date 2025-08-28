@@ -21,7 +21,7 @@
       const status = document.getElementById('status');
       try {
         // ⚠️ لاحظ المسار: موقعنا يُنشر من /docs لذلك نرجع خطوة ثم ندخل إلى /questions
-        const res = await fetch('../question_bank_v3.json', {cache: 'no-store'});
+        fetch('question_bank_v3.json', { cache: 'no-store' })
         if (!res.ok) throw new Error('HTTP ' + res.status);
         const bank = await res.json();
 
