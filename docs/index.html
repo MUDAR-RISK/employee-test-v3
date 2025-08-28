@@ -1,64 +1,46 @@
 <!DOCTYPE html>
-<html lang="en" dir="rtl">
+<html lang="ar" dir="rtl">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>اختبار قدرات الموظفين</title>
   <style>
-    body { font-family: Arial, sans-serif; margin: 30px; background: #f9f9f9; }
-    h1 { color: #2c3e50; }
-    .question { margin: 20px 0; padding: 15px; background: #fff; border-radius: 8px; }
-    button { background: #2c3e50; color: white; padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; }
-    button:hover { background: #34495e; }
-    #result { margin-top: 30px; padding: 20px; background: #ecf0f1; border-radius: 8px; }
+    body{font-family:system-ui,Arial,sans-serif;background:#f7f7f7;margin:24px}
+    .card{background:#fff;border-radius:12px;padding:16px;box-shadow:0 2px 10px rgba(0,0,0,.06);max-width:800px}
+    .ok{color:#0a7f2e} .err{color:#b00020}
+    code{background:#0001;padding:2px 6px;border-radius:6px}
   </style>
 </head>
 <body>
   <h1>اختبار قدرات الموظفين</h1>
-  <div id="quiz"></div>
-  <button onclick="submitQuiz()">إرسال</button>
-  <div id="result"></div>
+
+  <div class="card" id="status">جارِ التحميل…</div>
 
   <script>
-    let questions = [];
-    let answers = {};
+    (async () => {
+      const status = document.getElementById('status');
+      try {
+        // ⚠️ لاحظ المسار: موقعنا يُنشر من /docs لذلك نرجع خطوة ثم ندخل إلى /questions
+        const res = await fetch('../questions/question_bank_v3.json', {cache:'no-store'});
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const bank = await res.json();
 
-    // تحميل الأسئلة من JSON
-    fetch("questions/question_bank_v3.json")
-      .then(res => res.json())
-      .then(data => {
-        questions = data.questions;
-        renderQuiz();
-      });
-
-    function renderQuiz() {
-      const quizDiv = document.getElementById("quiz");
-      quizDiv.innerHTML = "";
-      questions.forEach((q, index) => {
-        const qDiv = document.createElement("div");
-        qDiv.classList.add("question");
-        qDiv.innerHTML = `<p>${index+1}. ${q.text}</p>`;
-        q.options.forEach(opt => {
-          qDiv.innerHTML += `
-            <label>
-              <input type="radio" name="q${index}" value="${opt.value}">
-              ${opt.text}
-            </label><br>`;
-        });
-        quizDiv.appendChild(qDiv);
-      });
-    }
-
-    function submitQuiz() {
-      questions.forEach((q, index) => {
-        const selected = document.querySelector(`input[name="q${index}"]:checked`);
-        if (selected) answers[`q${index}`] = selected.value;
-      });
-
-      // حساب النتيجة (بسيطة كبداية)
-      let score = Object.values(answers).reduce((a, b) => a + parseInt(b), 0);
-      document.getElementById("result").innerHTML = `<h3>النتيجة:</h3><p>${score}</p>`;
-    }
+        status.innerHTML = `
+          <div class="ok">تم التحميل ✅</div>
+          <div>الإصدار: <b>${bank.bank_version}</b></div>
+          <div>عدد الأسئلة: <b>${bank.questions.length}</b></div>
+          <div>ملاحظة: الآن نتأكد من ربط السكربتات.</div>
+        `;
+      } catch (e) {
+        status.innerHTML = `
+          <div class="err">فشل تحميل بنك الأسئلة ❌</div>
+          <div>الخطأ: <code>${String(e)}</code></div>
+          <div>تأكد أن الملف موجود في <code>/questions/question_bank_v3.json</code>
+               وأن الصفحة تُنشر من <code>/docs</code>.</div>
+        `;
+        console.error(e);
+      }
+    })();
   </script>
 </body>
 </html>
