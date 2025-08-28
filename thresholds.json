@@ -1,0 +1,57 @@
+{
+  "customer_support": {
+    "must": {
+      "communication": 65,
+      "speed": 60
+    },
+    "notes": "أي مؤشرات لأسلوب غير لبق = استبعاد."
+  },
+  "finance": {
+    "must": {
+      "accuracy": 75,
+      "stability": 65
+    },
+    "notes": "صفر تسامح مع الأخطاء الحرجة؛ السرعة دون دقة = فشل."
+  },
+  "p2p": {
+    "must": {
+      "accuracy": 70,
+      "time_management": 65
+    },
+    "notes": "التوثيق والمتابعة المستمرة أساسيان."
+  },
+  "risk_management": {
+    "must": {
+      "stability": 70,
+      "decision": 68
+    },
+    "notes": "اندفاع عاطفي عالي = مخاطرة."
+  },
+  "documentation": {
+    "must": {
+      "accuracy": 75,
+      "discipline": 65
+    },
+    "notes": "اختبارات تركيز أساسية."
+  },
+  "hr": {
+    "must": {
+      "communication": 70,
+      "neutrality": 65
+    },
+    "notes": "اختبارات SJT للنزاعات ضرورية."
+  },
+  "leadership_index": {
+    "formula_weights": {
+      "discipline": 0.3,
+      "stability": 0.25,
+      "decision": 0.2,
+      "communication": 0.15,
+      "agreeableness": 0.1
+    },
+    "levels": {
+      "shift_lead_min": 65,
+      "dept_head_min": 72
+    }
+  }
+}
