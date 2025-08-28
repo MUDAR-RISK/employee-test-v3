@@ -1,46 +1,24 @@
-<!DOCTYPE html>
-<html lang="ar" dir="rtl">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>اختبار قدرات الموظفين</title>
-  <style>
-    body{font-family:system-ui,Arial,sans-serif;background:#f7f7f7;margin:24px}
-    .card{background:#fff;border-radius:12px;padding:16px;box-shadow:0 2px 10px rgba(0,0,0,.06);max-width:800px}
-    .ok{color:#0a7f2e} .err{color:#b00020}
-    code{background:#0001;padding:2px 6px;border-radius:6px}
-  </style>
-</head>
-<body>
-  <h1>اختبار قدرات الموظفين</h1>
+<script>
+(async () => {
+  const status = document.getElementById('status');
+  try {
+    // حمّل بنك الأسئلة من نفس مجلد docs
+    const response = await fetch('question_bank_v3.json', { cache: 'no-store' });
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+    const bank = await response.json();
 
-  <div class="card" id="status">جارِ التحميل…</div>
-
-  <script>
-    (async () => {
-      const status = document.getElementById('status');
-      try {
-        // ⚠️ لاحظ المسار: موقعنا يُنشر من /docs لذلك نرجع خطوة ثم ندخل إلى /questions
-        fetch('question_bank_v3.json', { cache: 'no-store' })
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        const bank = await res.json();
-
-        status.innerHTML = `
-          <div class="ok">تم التحميل ✅</div>
-          <div>الإصدار: <b>${bank.bank_version}</b></div>
-          <div>عدد الأسئلة: <b>${bank.questions.length}</b></div>
-          <div>ملاحظة: الآن نتأكد من ربط السكربتات.</div>
-        `;
-      } catch (e) {
-        status.innerHTML = `
-          <div class="err">فشل تحميل بنك الأسئلة ❌</div>
-          <div>الخطأ: <code>${String(e)}</code></div>
-          <div>تأكد أن الملف موجود في <code>/questions/question_bank_v3.json</code>
-               وأن الصفحة تُنشر من <code>/docs</code>.</div>
-        `;
-        console.error(e);
-      }
-    })();
-  </script>
-</body>
-</html>
+    status.innerHTML = `
+      <div class="ok">تم التحميل ✅</div>
+      <div>الإصدار: <b>${bank.bank_version ?? '—'}</b></div>
+      <div>عدد الأسئلة: <b>${Array.isArray(bank.questions) ? bank.questions.length : 0}</b></div>
+    `;
+  } catch (e) {
+    status.innerHTML = `
+      <div class="err">فشل تحميل بنك الأسئلة ❌</div>
+      <div>الخطأ: <code>${String(e)}</code></div>
+      <div>المسار المُستخدم: <code>docs/question_bank_v3.json</code></div>
+    `;
+    console.error(e);
+  }
+})();
+</script>
