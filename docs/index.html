@@ -2,42 +2,22 @@
 (async () => {
   const status = document.getElementById('status');
 
-  // دالة صغيرة لتجربة أكثر من مسار وتجاوز الكاش
-  async function fetchJSON(paths) {
-    let lastErr;
-    for (const p of paths) {
-      const url = p + (p.includes('?') ? '&' : '?') + 'cb=' + Date.now(); // كسر الكاش
-      try {
-        const r = await fetch(url, { cache: 'no-store' });
-        if (!r.ok) throw new Error('HTTP ' + r.status + ' for ' + url);
-        const j = await r.json();
-        return { data: j, used: url };
-      } catch (e) {
-        lastErr = e;
-      }
-    }
-    throw lastErr;
-  }
-
   try {
-    // نجرب المسار المتوقع أولاً، وبعدين بدائل احتياط (في حال بقيت نسخة قديمة بالكاش)
-    const { data: bank, used } = await fetchJSON([
-      'question_bank_v3.json',           // داخل docs (الوضع الصحيح)
-      './question_bank_v3.json',         // نفس المعنى
-      '/employee-test-v3/question_bank_v3.json' // مطلقاً على الدومين
-    ]);
+    // جرّب تحميل الملف من نفس مجلد docs
+    const res = await fetch('question_bank_v3.json', { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+
+    const bank = await res.json();
 
     status.innerHTML = `
       <div class="ok">تم التحميل ✅</div>
-      <div>المسار المستخدم: <code>${used}</code></div>
-      <div>الإصدار: <b>${bank.bank_version ?? '—'}</b></div>
+      <div>الإصدار: <b>${bank.bank_version ?? 'غير محدد'}</b></div>
       <div>عدد الأسئلة: <b>${Array.isArray(bank.questions) ? bank.questions.length : 0}</b></div>
     `;
   } catch (e) {
     status.innerHTML = `
       <div class="err">فشل تحميل بنك الأسئلة ❌</div>
-      <div>الخطأ: <code>${String(e)}</code></div>
-      <div>تأكد أن الملف في <code>docs/question_bank_v3.json</code> وأن النشر من <code>docs/</code>.</div>
+      <div><code>${e.message}</code></div>
     `;
     console.error(e);
   }
