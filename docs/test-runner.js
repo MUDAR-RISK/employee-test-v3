@@ -1,4 +1,3 @@
-<script>
 // ------- tiny seeded RNG -------
 function mulberry32(seed) {
   let t = seed >>> 0;
@@ -138,4 +137,3 @@ TOTAL: ${total}  (${passNote})`;
 
 // expose to window
 window.runEmployeeTest = runEmployeeTest;
-</script>
