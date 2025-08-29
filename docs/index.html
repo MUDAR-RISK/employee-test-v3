@@ -81,6 +81,12 @@ const getLS=(k,d=null)=>{try{const v=localStorage.getItem(k);return v?JSON.parse
 
 const STATE_KEY='emp_test_v3_state';
 let BANK=null, QUESTIONS=[];
+
+// إذا فيه باراميتر reset=1 بالرابط → امسح الحالة
+if (new URLSearchParams(location.search).get('reset')==='1') {
+  localStorage.removeItem(STATE_KEY);
+}
+
 let state=getLS(STATE_KEY,{i:0,answers:{}});
 
 function safeText(q){return q?.text ?? q?.prompt ?? q?.label ?? q?.question ?? '—'}
