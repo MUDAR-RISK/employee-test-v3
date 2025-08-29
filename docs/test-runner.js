@@ -21,9 +21,9 @@ function pickRandom(arr, rnd) {
 }
 
 // ------- scoring -------
-function computeScore({ questions, dimWeights, thresholds, answers }) {
-  // defaults
-  const getDimW = (d) => (dimWeights && dimWeights[d] ? Number(dimWeights[d]) : 1);
+function computeScore(questions, dimWeights, thresholds, answers) {
+  const getDimId = (q) =>
+    (dimWeights && dimWeights[q.dimension]) ? Number(dimWeights[q.dimension]) : 1;
 
   let total = 0;
   const perDim = {};
@@ -32,9 +32,9 @@ function computeScore({ questions, dimWeights, thresholds, answers }) {
   for (const q of questions) {
     const qWeight = Number(q.weight ?? 1);
     const dim = q.dimension ?? "general";
-    const dw = getDimW(dim);
+    const dw = getDimId(q.dim);
     const chosen = answers[q.id];
-    const opt = (q.options || []).find(o => o.key === chosen);
+    const opt = (q.options || []).find((o) => o.key == chosen);
 
     const val = Number(opt?.value ?? 0);
     const contrib = val * qWeight * dw;
@@ -49,88 +49,50 @@ function computeScore({ questions, dimWeights, thresholds, answers }) {
       dimWeight: dw,
       selected: chosen,
       optionValue: val,
-      contribution: contrib
+      contribution: contrib,
     });
   }
 
-  // thresholds can be:
-  // { total: <number> } OR { total: { pass: <number> }, dimensions: { risk: { pass: <n> }, ... } }
-  let passNote = "No threshold configured";
-  if (thresholds) {
-    const totalPass = (typeof thresholds.total === "number")
-      ? thresholds.total
-      : (typeof thresholds.total?.pass === "number" ? thresholds.total.pass : null);
+  const passNote =
+    total >= (thresholds?.pass ?? 0) ? "PASS ✅" : "FAIL ❌";
 
-    if (totalPass != null) {
-      passNote = total >= totalPass ? "PASS" : "FAIL";
-    } else {
-      passNote = "No total threshold configured";
-    }
-  }
-
-  return { total, perDim, rows, passNote };
+  return { total, perDim, passNote, rows, answers };
 }
 
-// ------- main test runner -------
-async function runEmployeeTest({ seed = 42, attemptId = Date.now().toString(), user = "tester" } = {}) {
-  const base = "./"; // running inside docs/
+// ------- main runner -------
+async function runEmployeeTest({ seed = 42, user = "test", attemptId = "demo" }) {
+  const rnd = mulberry32(seed);
 
-  // Load data
-  const qb = await loadJson(base + "question_bank_v3.json").catch(async () => {
-    // fallback: try docs/questions (if it’s a folder with an index.json, adapt if needed)
-    return loadJson(base + "questions");
-  });
+  // load bank
+  const bank = await loadJson("./docs/question_bank_v3.json");
+  const weights = await loadJson("./docs/weights.json");
+  const thresholds = await loadJson("./docs/thresholds.json");
 
-  const weights = await loadJson(base + "weights.json").catch(() => ({}));
-  const thresholds = await loadJson(base + "thresholds.json").catch(() => (null));
+  const questions = bank.questions;
 
-  // Normalize shapes
-  const questions = Array.isArray(qb?.questions) ? qb.questions : (Array.isArray(qb) ? qb : []);
-  const dimWeights = weights?.dimensions || weights; // support {dimensions:{...}} OR flat {risk:1.5,...}
-
-  // Simulate answers
-  const rnd = mulberry32(Number(seed) || 42);
+  // generate fake answers (للتجربة فقط)
   const answers = {};
   for (const q of questions) {
-    const opts = q.options || [];
-    if (opts.length === 0) continue;
-    const picked = pickRandom(opts.map(o => o.key), rnd);
-    answers[q.id] = picked;
+    const opts = q.options || q.scaleLabels || ["0", "1", "2", "3", "4"];
+    const choice = pickRandom(opts, rnd);
+    answers[q.id] = choice;
   }
 
-  // Score
-  const { total, perDim, rows, passNote } = computeScore({ questions, dimWeights, thresholds, answers });
+  const { total, perDim, passNote, rows } = computeScore(
+    questions,
+    weights,
+    thresholds,
+    answers
+  );
 
-  // Render to page
   const out = document.getElementById("test-output");
-  if (out) {
-    out.innerHTML = "";
-
-    const h = document.createElement("pre");
-    h.textContent =
-`Attempt ${attemptId} by ${user}
-Questions: ${questions.length} | Seed: ${seed}
-Dimension scores: ${JSON.stringify(perDim, null, 2)}
-TOTAL: ${total}  (${passNote})`;
-    out.appendChild(h);
-
-    // Table
-    const table = document.createElement("table");
-    table.border = "1";
-    const head = document.createElement("tr");
-    ["QID","Dim","Q.Weight","Dim.W","Selected","Opt.Val","Contribution"].forEach(c=>{
-      const th = document.createElement("th"); th.textContent = c; head.appendChild(th);
-    });
-    table.appendChild(head);
-
-    for (const r of rows) {
-      const tr = document.createElement("tr");
-      [r.questionId, r.dimension, r.weight, r.dimWeight, r.selected, r.optionValue, r.contribution]
-      .forEach(v => { const td = document.createElement("td"); td.textContent = v; tr.appendChild(td); });
-      table.appendChild(tr);
-    }
-    out.appendChild(table);
-  }
+  out.innerHTML = `
+    <div><b>User:</b> ${user}</div>
+    <div><b>Attempt:</b> ${attemptId}</div>
+    <div><b>Seed:</b> ${seed}</div>
+    <div><b>Total Score:</b> ${total} → ${passNote}</div>
+    <pre>${JSON.stringify(perDim, null, 2)}</pre>
+  `;
 
   return { total, perDim, passNote, rows, answers, meta: { attemptId, user, seed } };
 }
