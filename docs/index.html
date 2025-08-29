@@ -314,5 +314,30 @@ function finishExam(){
   };
 }
 </script>
+  <hr>
+  <section>
+    <h2>تشغيل اختبار تجريبي (E2E)</h2>
+    <div style="display:flex; gap:8px; align-items:center;">
+      <label>Seed: <input id="seed-input" type="number" value="42" style="width:100px"></label>
+      <label>User: <input id="user-input" type="text" value="codex-tester" style="width:160px"></label>
+      <button id="run-btn">Run Test</button>
+    </div>
+    <div id="test-output" style="margin-top:12px;"></div>
+  </section>
+
+  <!-- حمّل ملف السكربت -->
+  <script src="./test-runner.js"></script>
+  <script>
+    document.getElementById("run-btn").addEventListener("click", async () => {
+      const seed = Number(document.getElementById("seed-input").value || 42);
+      const user = document.getElementById("user-input").value || "codex-tester";
+      try {
+        await window.runEmployeeTest({ seed, user, attemptId: String(Date.now()) });
+      } catch (e) {
+        const out = document.getElementById("test-output");
+        out.textContent = "Error: " + e.message;
+      }
+    });
+  </script>
 </body>
 </html>
